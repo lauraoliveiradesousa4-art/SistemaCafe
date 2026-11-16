@@ -1,0 +1,297 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistema Café</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f6eee5;
+    margin: 0;
+    color: #38251d;
+}
+
+header {
+    background: #583624;
+    color: white;
+    padding: 25px;
+    text-align: center;
+}
+
+main {
+    max-width: 1050px;
+    margin: 25px auto;
+    padding: 0 15px;
+}
+
+section {
+    background: white;
+    padding: 22px;
+    margin-bottom: 20px;
+    border-radius: 12px;
+}
+
+form {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+input, button {
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 15px;
+}
+
+input {
+    border: 1px solid #ccc;
+    width: 100%;
+}
+
+button {
+    background: #79513a;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #4c3021;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+}
+
+.acoes {
+    display: flex;
+    gap: 6px;
+}
+
+.excluir {
+    background: #b83e3e;
+}
+
+#mensagem {
+    margin: 12px 0;
+    font-weight: bold;
+}
+
+@media(max-width: 650px) {
+    form { grid-template-columns: 1fr; }
+    section { overflow-x: auto; }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>☕ Sistema de Gerenciamento de Café</h1>
+    <p>Controle de produtos e estoque</p>
+</header>
+
+<main>
+
+<section>
+    <h2 id="tituloForm">Cadastrar produto</h2>
+
+    <form id="formulario">
+        <input id="nome" placeholder="Nome do produto" required>
+        <input id="categoria" placeholder="Categoria" required>
+        <input id="preco" type="number" step="0.01"
+               min="0" placeholder="Preço" required>
+        <input id="estoque" type="number" min="0"
+               step="1" placeholder="Estoque" required>
+
+        <button type="submit">Salvar produto</button>
+        <button type="button" onclick="limpar()">
+            Cancelar edição
+        </button>
+    </form>
+
+    <p id="mensagem" role="status"></p>
+</section>
+
+<section>
+    <h2>Produtos cadastrados</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Categoria</th>
+                <th>Preço</th>
+                <th>Estoque</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="lista"></tbody>
+    </table>
+</section>
+
+</main>
+
+<script>
+const API = "/api/produtos";
+let idEdicao = null;
+let produtos = [];
+
+function mensagem(texto, erro = false) {
+    const elemento = document.getElementById("mensagem");
+    elemento.textContent = texto;
+    elemento.style.color = erro ? "#b83e3e" : "#24743a";
+}
+
+async function listar() {
+    try {
+        const resposta = await fetch(API);
+
+        if (!resposta.ok) {
+            throw new Error("Erro ao carregar produtos.");
+        }
+
+        produtos = await resposta.json();
+        const lista = document.getElementById("lista");
+        lista.replaceChildren();
+
+        produtos.forEach(p => {
+            const tr = document.createElement("tr");
+
+            [
+                p.id,
+                p.nome,
+                p.categoria,
+                "R$ " + Number(p.preco).toFixed(2),
+                p.estoque
+            ].forEach(valor => {
+                const td = document.createElement("td");
+                td.textContent = valor;
+                tr.appendChild(td);
+            });
+
+            const tdAcoes = document.createElement("td");
+            tdAcoes.className = "acoes";
+
+            const btnEditar = document.createElement("button");
+            btnEditar.textContent = "Editar";
+            btnEditar.onclick = () => editar(p.id);
+
+            const btnExcluir = document.createElement("button");
+            btnExcluir.textContent = "Excluir";
+            btnExcluir.className = "excluir";
+            btnExcluir.onclick = () => excluir(p.id);
+
+            tdAcoes.append(btnEditar, btnExcluir);
+            tr.appendChild(tdAcoes);
+            lista.appendChild(tr);
+        });
+
+    } catch (erro) {
+        mensagem(erro.message, true);
+    }
+}
+
+document.getElementById("formulario").onsubmit = async e => {
+    e.preventDefault();
+
+    const dados = {
+        nome: document.getElementById("nome").value,
+        categoria: document.getElementById("categoria").value,
+        preco: Number(document.getElementById("preco").value),
+        estoque: Number(document.getElementById("estoque").value)
+    };
+
+    const editando = idEdicao !== null;
+
+    try {
+        const resposta = await fetch(
+            editando ? `${API}/${idEdicao}` : API,
+            {
+                method: editando ? "PUT" : "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(dados)
+            }
+        );
+
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+            throw new Error(resultado.erro || "Erro ao salvar.");
+        }
+
+        limpar();
+        mensagem(resultado.mensagem);
+        await listar();
+
+    } catch (erro) {
+        mensagem(erro.message, true);
+    }
+};
+
+function editar(id) {
+    const p = produtos.find(item => item.id === id);
+    if (!p) return;
+
+    idEdicao = id;
+
+    document.getElementById("nome").value = p.nome;
+    document.getElementById("categoria").value = p.categoria;
+    document.getElementById("preco").value = p.preco;
+    document.getElementById("estoque").value = p.estoque;
+
+    document.getElementById("tituloForm").textContent =
+        "Editar produto";
+
+    window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+async function excluir(id) {
+    if (!confirm("Deseja excluir este produto?")) return;
+
+    try {
+        const resposta = await fetch(`${API}/${id}`, {
+            method: "DELETE"
+        });
+
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+            throw new Error(resultado.erro || "Erro ao excluir.");
+        }
+
+        mensagem(resultado.mensagem);
+        await listar();
+
+    } catch (erro) {
+        mensagem(erro.message, true);
+    }
+}
+
+function limpar() {
+    document.getElementById("formulario").reset();
+
+    document.getElementById("tituloForm").textContent =
+        "Cadastrar produto";
+
+    idEdicao = null;
+}
+
+listar();
+</script>
+
+</body>
+</html>
